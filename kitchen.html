@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>收單系統 - 叙叙</title>
+  <style>
+    :root { --bg:#f0f4f8; --card:#fff; --primary:#2d6a4f; --red:#C8281A; --text:#1a1a1a; --muted:#6b6b6b; --border:#e0e0e0; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    header { background:var(--primary); color:white; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; }
+    header h1 { font-size:1.1rem; }
+    .refresh-btn { background:rgba(255,255,255,0.2); border:none; color:white; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.85rem; }
+    .status-bar { background:white; padding:10px 20px; display:flex; gap:20px; border-bottom:1px solid var(--border); font-size:0.85rem; }
+    .stat { display:flex; gap:6px; align-items:center; }
+    .stat-num { font-weight:700; font-size:1.1rem; }
+    .dot { width:10px; height:10px; border-radius:50%; }
+    .dot-new { background:#f4a261; } .dot-prep { background:#457b9d; } .dot-done { background:#2d6a4f; }
+    .columns { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:16px; }
+    @media(max-width:768px){ .columns { grid-template-columns:1fr; } }
+    .col-header { font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:8px 12px; border-radius:8px 8px 0 0; }
+    .col-new .col-header { background:#f4a261; color:white; }
+    .col-prep .col-header { background:#457b9d; color:white; }
+    .col-done .col-header { background:#2d6a4f; color:white; }
+    .col-body { display:flex; flex-direction:column; gap:10px; }
+    .order-card { background:var(--card); border-radius:10px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,0.08); border-left:4px solid transparent; }
+    .col-new .order-card { border-left-color:#f4a261; }
+    .col-prep .order-card { border-left-color:#457b9d; }
+    .col-done .order-card { border-left-color:#2d6a4f; opacity:0.7; }
+    .order-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+    .order-id { font-weight:700; font-size:0.95rem; }
+    .order-time { font-size:0.75rem; color:var(--muted); }
+    .order-items { font-size:0.85rem; margin:6px 0; }
+    .order-item-row { display:flex; justify-content:space-between; padding:2px 0; }
+    .order-note { font-size:0.78rem; color:var(--red); background:#fff3e0; padding:4px 8px; border-radius:6px; margin:6px 0; }
+    .order-footer { display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
+    .order-total { font-weight:700; color:var(--red); }
+    .action-btn { border:none; padding:6px 14px; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer; }
+    .btn-start { background:#457b9d; color:white; }
+    .btn-done { background:#2d6a4f; color:white; }
+    .btn-archive { background:#ccc; color:#666; }
+    .auto-refresh { font-size:0.75rem; color:rgba(255,255,255,0.7); }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🍽️ 叙叙 · 收單管理</h1>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="auto-refresh" id="last-refresh">最後更新：--</span>
+    <button class="refresh-btn" onclick="loadOrders()">🔄 重新整理</button>
+  </div>
+</header>
+<div class="status-bar">
+  <div class="stat"><span class="dot dot-new"></span>新訂單 <span class="stat-num" id="cnt-new">0</span></div>
+  <div class="stat"><span class="dot dot-prep"></span>製作中 <span class="stat-num" id="cnt-prep">0</span></div>
+  <div class="stat"><span class="dot dot-done"></span>已完成 <span class="stat-num" id="cnt-done">0</span></div>
+</div>
+<div class="columns">
+  <div class="col-new"><div class="col-header">🔔 新訂單</div><div class="col-body" id="col-new"></div></div>
+  <div class="col-prep"><div class="col-header">🍳 製作中</div><div class="col-body" id="col-prep"></div></div>
+  <div class="col-done"><div class="col-header">✅ 已完成</div><div class="col-body" id="col-done"></div></div>
+</div>
+<script>
+// ============================================================
+// ⚙️ 設定區塊 — 填入你的 Vercel 後端網址與 Staff Token
+// ============================================================
+const API_BASE    = "https://ordering-backend.vercel.app";
+const STAFF_TOKEN = "vnvj0713881121";
+const REFRESH_SEC = 20;
+// ============================================================
+
+async function loadOrders() {
+  try {
+    const res = await fetch(`${API_BASE}/api/orders`, {
+      headers: { "Authorization": `Bearer ${STAFF_TOKEN}` }
+    });
+    const orders = await res.json();
+    render(orders);
+    document.getElementById("last-refresh").textContent = `最後更新：${new Date().toLocaleTimeString("zh-TW")}`;
+  } catch(e) { console.error("載入失敗", e); }
+}
+
+function render(orders) {
+  const newO   = orders.filter(o => o.status === "new");
+  const prepO  = orders.filter(o => o.status === "preparing");
+  const doneO  = orders.filter(o => o.status === "done").slice(0,10);
+  document.getElementById("cnt-new").textContent  = newO.length;
+  document.getElementById("cnt-prep").textContent = prepO.length;
+  document.getElementById("cnt-done").textContent = doneO.length;
+  document.getElementById("col-new").innerHTML  = newO.map(o  => card(o,"start")).join("") || empty();
+  document.getElementById("col-prep").innerHTML = prepO.map(o => card(o,"done")).join("") || empty();
+  document.getElementById("col-done").innerHTML = doneO.map(o => card(o,"archive")).join("") || empty();
+}
+function empty() { return `<p style="text-align:center;padding:30px;color:#aaa;font-size:0.85rem;">無訂單</p>`; }
+function card(order, action) {
+  const time = new Date(order.created_at).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"});
+  const total = order.items.reduce((s,i)=>s+i.price*i.qty,0);
+  const items = order.items.map(i=>`<div class="order-item-row"><span>${i.name}</span><span>×${i.qty}</span></div>`).join("");
+  const btn = action==="start"
+    ? `<button class="action-btn btn-start" onclick="upd('${order.id}','preparing')">開始製作</button>`
+    : action==="done"
+    ? `<button class="action-btn btn-done" onclick="upd('${order.id}','done')">標記完成</button>`
+    : `<button class="action-btn btn-archive" onclick="upd('${order.id}','archived')">封存</button>`;
+  return `<div class="order-card">
+    <div class="order-header">
+      <div><div class="order-id">#${order.id.slice(-6).toUpperCase()}</div>
+      <div class="order-time">${time} · 桌 ${order.table_id} · ${order.guest_count}人</div></div>
+    </div>
+    <div class="order-items">${items}</div>
+    ${order.note ? `<div class="order-note">📝 ${order.note}</div>` : ""}
+    <div class="order-footer"><span class="order-total">$${total}</span>${btn}</div>
+  </div>`;
+}
+async function upd(id, status) {
+  await fetch(`${API_BASE}/api/order/${id}/status`, {
+    method:"PATCH",
+    headers:{"Content-Type":"application/json","Authorization":`Bearer ${STAFF_TOKEN}`},
+    body:JSON.stringify({status})
+  });
+  loadOrders();
+}
+loadOrders();
+setInterval(loadOrders, REFRESH_SEC * 1000);
+</script>
+</body>
+</html>
